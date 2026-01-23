@@ -544,7 +544,11 @@ function formatHelp(...configs) {
         // Show detailed help for each command
         for (const cfg of commandConfigs) {
             lines.push('');
-            lines.push(`Command: ${cfg.command}`);
+            if (cfg.usage) {
+                lines.push(`${cfg.usage}`);
+            } else {
+                lines.push(`${cfg.command} [options]`);
+            }
             if (cfg.description) {
                 lines.push(`  ${cfg.description}`);
             }
@@ -552,7 +556,7 @@ function formatHelp(...configs) {
             // Positionals
             if (cfg.positionals && cfg.positionals.length > 0) {
                 lines.push('');
-                lines.push('  Positional arguments:');
+                lines.push('  Arguments:');
                 for (const pos of cfg.positionals) {
                     if (typeof pos === 'string') {
                         lines.push(`    ${pos}`);
@@ -629,7 +633,7 @@ function formatSingleConfigHelp(config) {
     // Format positionals if present
     if (positionals.length > 0) {
         lines.push('');
-        lines.push('Positional arguments:');
+        lines.push('Arguments:');
         for (const pos of positionals) {
             if (typeof pos === 'string') {
                 lines.push(`  ${pos}`);
