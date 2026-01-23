@@ -30,24 +30,14 @@ console.log(result.positionals); // ['positional']
 
 ## API
 
-### Function Signatures
+### Function Signature
 
-`parseArgs()` supports two call signatures:
-
-#### New Signature (Recommended)
 ```javascript
 parseArgs(args, config)
 ```
 
-- `args` (Array, optional): Array of strings to parse. Defaults to `process.argv.slice(2)` if omitted.
-- `config` (Object): Configuration object
-
-#### Legacy Signature
-```javascript
-parseArgs(config)
-```
-
-- `config` (Object): Configuration object with `args` property
+- `args` (Array, required): Array of strings to parse. Must be an array.
+- `config` (Object, optional): Configuration object. Defaults to `{}`
 
 ### Configuration Object
 

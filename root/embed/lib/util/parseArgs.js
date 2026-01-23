@@ -2,37 +2,20 @@
 
 const process = require('/lib/process');
 
-function parseArgs(argsOrConfig, maybeOptions) {
-    let args, options, strict, allowNegative, tokens, allowPositionals, positionalsConfig;
-
-    // Handle different call signatures:
-    // parseArgs(options) - old style with config object
-    // parseArgs(args, options) - new style with args array first
-    if (Array.isArray(argsOrConfig)) {
-        // New signature: parseArgs([args], options)
-        args = argsOrConfig;
-        const config = maybeOptions || {};
-        options = config.options || {};
-        strict = config.strict !== undefined ? config.strict : true;
-        allowNegative = config.allowNegative || false;
-        tokens = config.tokens || false;
-        positionalsConfig = config.positionals;
-        allowPositionals = config.allowPositionals !== undefined
-            ? config.allowPositionals
-            : !strict;
-    } else {
-        // Old signature: parseArgs(config) or parseArgs()
-        const config = argsOrConfig || {};
-        args = config.args || (typeof process !== 'undefined' && process.argv ? process.argv.slice(2) : []);
-        options = config.options || {};
-        strict = config.strict !== undefined ? config.strict : true;
-        allowNegative = config.allowNegative || false;
-        tokens = config.tokens || false;
-        positionalsConfig = config.positionals;
-        allowPositionals = config.allowPositionals !== undefined
-            ? config.allowPositionals
-            : !strict;
+function parseArgs(args, config) {
+    if (!Array.isArray(args)) {
+        throw new TypeError('First argument must be an array of arguments');
     }
+
+    config = config || {};
+    const options = config.options || {};
+    const strict = config.strict !== undefined ? config.strict : true;
+    const allowNegative = config.allowNegative || false;
+    const tokens = config.tokens || false;
+    const positionalsConfig = config.positionals;
+    const allowPositionals = config.allowPositionals !== undefined
+        ? config.allowPositionals
+        : !strict;
 
     // Normalize positionals config
     let positionalDefs = null;

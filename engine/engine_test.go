@@ -605,8 +605,7 @@ func TestUtilParseArgs(t *testing.T) {
 			name: "util_parseArgs_old_signature",
 			script: `
 				const {parseArgs} = require("/lib/util");
-				const result = parseArgs({
-					args: ['-v', '--output', 'file.txt'],
+				const result = parseArgs(['-v', '--output', 'file.txt'], {
 					options: {
 						verbose: { type: 'boolean', short: 'v' },
 						output: { type: 'string' }
