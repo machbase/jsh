@@ -28,21 +28,51 @@ console.log(result.values);      // { foo: true, bar: 'value' }
 console.log(result.positionals); // ['positional']
 ```
 
+### Sub-command Example
+
+```javascript
+const { parseArgs } = require('/lib/util');
+
+// Define configs for different sub-commands
+const commitConfig = {
+    command: 'commit',
+    options: {
+        message: { type: 'string', short: 'm' },
+        all: { type: 'boolean', short: 'a' }
+    }
+};
+
+const pushConfig = {
+    command: 'push',
+    options: {
+        force: { type: 'boolean', short: 'f' }
+    },
+    positionals: ['remote'],
+    allowPositionals: true
+};
+
+// Parse 'commit' sub-command
+const result = parseArgs(['commit', '-am', 'Fix bug'], commitConfig, pushConfig);
+console.log(result.command);  // 'commit'
+console.log(result.values);   // { all: true, message: 'Fix bug' }
+```
+
 ## API
 
 ### Function Signature
 
 ```javascript
-parseArgs(args, config)
+parseArgs(args, ...configs)
 ```
 
 - `args` (Array, required): Array of strings to parse. Must be an array.
-- `config` (Object, optional): Configuration object. Defaults to `{}`
+- `...configs` (Object, optional): One or more configuration objects. When multiple configs are provided with `command` properties, parseArgs will select the appropriate config based on the first element of `args`.
 
 ### Configuration Object
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
+| `command` | string | `undefined` | Sub-command name to match against `args[0]`. Used for sub-command routing. |
 | `options` | Object | `{}` | Option definitions (see below) |
 | `strict` | boolean | `true` | Throw error on unknown options |
 | `allowPositionals` | boolean | `!strict` | Allow positional arguments |
@@ -96,6 +126,7 @@ positionals: ['inputFile', 'outputFile']
 
 Returns an object with:
 
+- `command` (string, optional): The matched sub-command name (only present when sub-command routing is used)
 - `values` (Object): Parsed option values
 - `positionals` (Array): Positional arguments (always present)
 - `namedPositionals` (Object, optional): Named positional arguments (only if `positionals` config provided)
@@ -332,6 +363,86 @@ const result = parseArgs(['-v', '--config', 'app.json', 'src.js', 'dest.js'], {
 // result.namedPositionals: { source: 'src.js', destination: 'dest.js' }
 ```
 
+### Sub-command Routing
+
+Handle different sub-commands with different options and positionals by providing multiple configs with `command` properties:
+
+```javascript
+// Define configs for different sub-commands
+const addConfig = {
+    command: 'add',
+    options: {
+        force: { type: 'boolean', short: 'f' },
+        message: { type: 'string', short: 'm' }
+    },
+    positionals: ['file'],
+    allowPositionals: true
+};
+
+const removeConfig = {
+    command: 'remove',
+    options: {
+        recursive: { type: 'boolean', short: 'r' },
+        verbose: { type: 'boolean', short: 'v' }
+    },
+    positionals: ['file'],
+    allowPositionals: true
+};
+
+// Parse with sub-command
+const result1 = parseArgs(['add', '-f', '-m', 'Initial commit', 'file.txt'], addConfig, removeConfig);
+// result1.command: 'add'
+// result1.values: { force: true, message: 'Initial commit' }
+// result1.namedPositionals: { file: 'file.txt' }
+
+const result2 = parseArgs(['remove', '-rv', 'dir/'], addConfig, removeConfig);
+// result2.command: 'remove'
+// result2.values: { recursive: true, verbose: true }
+// result2.namedPositionals: { file: 'dir/' }
+```
+
+**Git-like example:**
+
+```javascript
+const commitConfig = {
+    command: 'commit',
+    options: {
+        message: { type: 'string', short: 'm' },
+        all: { type: 'boolean', short: 'a' },
+        amend: { type: 'boolean' }
+    }
+};
+
+const pushConfig = {
+    command: 'push',
+    options: {
+        force: { type: 'boolean', short: 'f' },
+        tags: { type: 'boolean' }
+    },
+    positionals: ['remote', { name: 'branch', optional: true }],
+    allowPositionals: true
+};
+
+const result = parseArgs(['commit', '-am', 'Fix bug'], commitConfig, pushConfig);
+// result.command: 'commit'
+// result.values: { all: true, message: 'Fix bug' }
+
+const result2 = parseArgs(['push', '-f', 'origin', 'main'], commitConfig, pushConfig);
+// result2.command: 'push'
+// result2.values: { force: true }
+// result2.namedPositionals: { remote: 'origin', branch: 'main' }
+```
+
+**How sub-command routing works:**
+
+1. When multiple configs are provided, parseArgs checks `args[0]` against each config's `command` property
+2. If a match is found, that config is used and `args[0]` is removed from processing
+3. The matched command name is returned in `result.command`
+4. If no command matches, the first config without a `command` property is used (fallback/default config)
+5. Each sub-command can have its own options, positionals, and other settings
+
+This allows building CLI tools with git-like sub-command structures where each sub-command has different flags and arguments.
+
 ### Tokens Mode
 
 Get detailed parsing information:
@@ -420,6 +531,114 @@ try {
 }
 ```
 
+## Generating Help Messages
+
+The `formatHelp()` function generates formatted help text from configuration objects. It supports both single-command and multi-command (sub-command) configurations.
+
+### Basic Usage
+
+```javascript
+const help = parseArgs.formatHelp({
+    usage: 'Usage: myapp [options] <file>',
+    options: {
+        verbose: { type: 'boolean', short: 'v', description: 'Enable verbose output' },
+        output: { type: 'string', short: 'o', description: 'Output file', default: 'out.txt' }
+    },
+    positionals: [
+        { name: 'file', description: 'Input file to process' }
+    ]
+});
+
+console.log(help);
+// Output:
+// Usage: myapp [options] <file>
+//
+// Positional arguments:
+//   file - Input file to process
+//
+// Options:
+//   -v, --verbose      Enable verbose output
+//   -o, --output       Output file  (default: out.txt)
+```
+
+### Multi-Command Help
+
+When you provide multiple configurations with `command` properties, `formatHelp()` generates comprehensive help showing all available commands and their individual options:
+
+```javascript
+const help = parseArgs.formatHelp(
+    // Global/default config
+    {
+        usage: 'Usage: git <command> [options]',
+        options: {
+            version: { type: 'boolean', description: 'Show version' },
+            help: { type: 'boolean', short: 'h', description: 'Show help' }
+        }
+    },
+    // Sub-command configs
+    {
+        command: 'commit',
+        description: 'Record changes to the repository',
+        options: {
+            message: { type: 'string', short: 'm', description: 'Commit message' },
+            all: { type: 'boolean', short: 'a', description: 'Stage all changes' },
+            amend: { type: 'boolean', description: 'Amend previous commit' }
+        }
+    },
+    {
+        command: 'push',
+        description: 'Update remote refs along with associated objects',
+        options: {
+            force: { type: 'boolean', short: 'f', description: 'Force push' },
+            tags: { type: 'boolean', description: 'Push tags' }
+        },
+        positionals: [
+            { name: 'remote', description: 'Remote name' },
+            { name: 'branch', optional: true, description: 'Branch name' }
+        ]
+    }
+);
+
+console.log(help);
+// Output:
+// Usage: git <command> [options]
+//
+// Commands:
+//   commit  Record changes to the repository
+//   push    Update remote refs along with associated objects
+//
+// Global options:
+//   --version    Show version
+//   -h, --help   Show help
+//
+// Command: commit
+//   Record changes to the repository
+//
+//   Options:
+//     -m, --message  Commit message
+//     -a, --all      Stage all changes
+//     --amend        Amend previous commit
+//
+// Command: push
+//   Update remote refs along with associated objects
+//
+//   Positional arguments:
+//     remote - Remote name
+//     branch (optional) - Branch name
+//
+//   Options:
+//     -f, --force  Force push
+//     --tags       Push tags
+```
+
+**formatHelp() features:**
+- Automatically formats camelCase option names to kebab-case
+- Aligns option descriptions for better readability
+- Shows default values when specified
+- Marks optional positionals and variadic arguments
+- Separates global options from command-specific options
+- Lists all available commands with descriptions
+
 ## Compatibility
 
 This implementation is compatible with Node.js `util.parseArgs()` API, supporting:
@@ -447,6 +666,7 @@ Beyond Node.js `util.parseArgs()`, this implementation adds:
 - ✅ **Variadic positionals** - Collect remaining arguments into an array
 - ✅ **Positional validation** - Automatic validation of required arguments
 - ✅ **CamelCase to kebab-case conversion** - Automatically converts option names from camelCase to kebab-case for CLI flags
+- ✅ **Sub-command routing** - Support for git-like sub-commands with different options per command
 
 ## License
 

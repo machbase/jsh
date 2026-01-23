@@ -36,3 +36,34 @@ console.log('maxRetryCount ->', parseArgs.toKebabCase('maxRetryCount'));
 console.log('enableDebug ->', parseArgs.toKebabCase('enableDebug'));
 console.log('port ->', parseArgs.toKebabCase('port'));
 console.log('HTTPServer ->', parseArgs.toKebabCase('HTTPServer'));
+console.log();
+
+console.log('=== Test 4: formatHelp with sub-commands ===');
+const help4 = parseArgs.formatHelp(
+    {
+        usage: 'Usage: git <command> [options]',
+        options: {
+            help: { type: 'boolean', short: 'h', description: 'Show help' }
+        }
+    },
+    {
+        command: 'commit',
+        description: 'Record changes to the repository',
+        options: {
+            message: { type: 'string', short: 'm', description: 'Commit message' },
+            all: { type: 'boolean', short: 'a', description: 'Stage all changes' }
+        }
+    },
+    {
+        command: 'push',
+        description: 'Update remote refs',
+        options: {
+            force: { type: 'boolean', short: 'f', description: 'Force push' }
+        },
+        positionals: [
+            { name: 'remote', description: 'Remote name' },
+            { name: 'branch', optional: true, description: 'Branch name' }
+        ]
+    }
+);
+console.log(help4);

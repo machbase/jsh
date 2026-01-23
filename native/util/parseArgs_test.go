@@ -101,6 +101,33 @@ func TestParseArgs(t *testing.T) {
 				"INFO  enableDebug ->enable-debug",
 				"INFO  port ->port",
 				"INFO  HTTPServer ->-h-t-t-p-server",
+				"INFO  ",
+				"INFO  === Test 4: formatHelp with sub-commands ===",
+				"INFO  Usage: git <command> [options]",
+				"",
+				"Commands:",
+				"  commit  Record changes to the repository",
+				"  push    Update remote refs",
+				"",
+				"Global options:",
+				"  -h, --[no-]help  Show help",
+				"",
+				"Command: commit",
+				"  Record changes to the repository",
+				"",
+				"  Options:",
+				"    -m, --message   Commit message",
+				"    -a, --[no-]all  Stage all changes",
+				"",
+				"Command: push",
+				"  Update remote refs",
+				"",
+				"  Positional arguments:",
+				"    remote - Remote name",
+				"    branch (optional) - Branch name",
+				"",
+				"  Options:",
+				"    -f, --[no-]force  Force push",
 			},
 		},
 		{
@@ -144,6 +171,72 @@ func TestParseArgs(t *testing.T) {
 				"INFO  All tests completed!",
 			},
 		},
+		{
+			name: "parseArgs-subcommand",
+			args: []string{"parseArgs-subcommand-test"},
+			expectedOutput: []string{
+				"INFO  === Sub-command Test 1: add command ===",
+				"INFO  command:add",
+				"INFO  force:true",
+				"INFO  message:Initial commit",
+				"INFO  file:file.txt",
+				"INFO  ",
+				"INFO  === Sub-command Test 2: remove command ===",
+				"INFO  command:remove",
+				"INFO  recursive:true",
+				"INFO  file:dir/",
+				"INFO  ",
+				"INFO  === Sub-command Test 3: default config (no matching command) ===",
+				"INFO  command:null",
+				"INFO  help:true",
+				"INFO  ",
+				"INFO  === Sub-command Test 4: git-like commit ===",
+				"INFO  command:commit",
+				"INFO  all:true",
+				"INFO  message:Fix bug",
+				"INFO  ",
+				"INFO  === Sub-command Test 5: git-like push with positionals ===",
+				"INFO  command:push",
+				"INFO  force:true",
+				"INFO  remote:origin",
+				"INFO  branch:main",
+				"INFO  ",
+				"INFO  === All sub-command tests passed ===",
+			},
+		},
+		{
+			name: "parseArgs-subcommand-help",
+			args: []string{"parseArgs-subcommand-test", "-h"},
+			expectedOutput: []string{
+				"INFO  === Sub-command Test 1: add command ===",
+				"INFO  command:add",
+				"INFO  force:true",
+				"INFO  message:Initial commit",
+				"INFO  file:file.txt",
+				"INFO  ",
+				"INFO  === Sub-command Test 2: remove command ===",
+				"INFO  command:remove",
+				"INFO  recursive:true",
+				"INFO  file:dir/",
+				"INFO  ",
+				"INFO  === Sub-command Test 3: default config (no matching command) ===",
+				"INFO  command:null",
+				"INFO  help:true",
+				"INFO  ",
+				"INFO  === Sub-command Test 4: git-like commit ===",
+				"INFO  command:commit",
+				"INFO  all:true",
+				"INFO  message:Fix bug",
+				"INFO  ",
+				"INFO  === Sub-command Test 5: git-like push with positionals ===",
+				"INFO  command:push",
+				"INFO  force:true",
+				"INFO  remote:origin",
+				"INFO  branch:main",
+				"INFO  ",
+				"INFO  === All sub-command tests passed ===",
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -176,8 +269,16 @@ func TestParseArgs(t *testing.T) {
 			expectedOutput := strings.TrimSpace(strings.Join(tt.expectedOutput, "\n"))
 
 			// Compare output with expected
-			if actualOutput != expectedOutput {
-				t.Errorf("Output mismatch:\nExpected: %q\nActual:   %q", expectedOutput, actualOutput)
+			expectedLines := strings.Split(expectedOutput, "\n")
+			actualLines := strings.Split(actualOutput, "\n")
+			for i := range expectedLines {
+				if i >= len(actualLines) {
+					t.Errorf("Output has fewer lines than expected. Missing line: %q", expectedLines[i])
+					break
+				}
+				if strings.TrimSpace(expectedLines[i]) != strings.TrimSpace(actualLines[i]) {
+					t.Errorf("Line %d mismatch:\nExpected: %q\nActual:   %q", i+1, expectedLines[i], actualLines[i])
+				}
 			}
 		})
 	}

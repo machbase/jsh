@@ -2,9 +2,36 @@
 
 const process = require('/lib/process');
 
-function parseArgs(args, config) {
+function parseArgs(args, ...configs) {
     if (!Array.isArray(args)) {
         throw new TypeError('First argument must be an array of arguments');
+    }
+
+    // Select appropriate config based on sub-command
+    let config = null;
+    let commandName = null;
+    let argsToProcess = args;
+
+    if (configs.length > 1) {
+        // Multiple configs provided - check for sub-command matching
+        const potentialCommand = args.length > 0 ? args[0] : null;
+        
+        for (const cfg of configs) {
+            if (cfg.command && cfg.command === potentialCommand) {
+                config = cfg;
+                commandName = potentialCommand;
+                argsToProcess = args.slice(1); // Skip the command itself
+                break;
+            }
+        }
+
+        // If no command matched, use the first config without a command property
+        if (!config) {
+            config = configs.find(cfg => !cfg.command) || configs[0];
+        }
+    } else {
+        // Single or no config provided
+        config = configs[0] || {};
     }
 
     config = config || {};
@@ -44,6 +71,10 @@ function parseArgs(args, config) {
         positionals: []
     };
 
+    if (commandName !== null) {
+        result.command = commandName;
+    }
+
     if (tokens) {
         result.tokens = [];
     }
@@ -79,8 +110,8 @@ function parseArgs(args, config) {
     let index = 0;
     let foundOptionTerminator = false;
 
-    while (index < args.length) {
-        const arg = args[index];
+    while (index < argsToProcess.length) {
+        const arg = argsToProcess[index];
 
         // Option terminator '--'
         if (arg === '--') {
@@ -94,16 +125,16 @@ function parseArgs(args, config) {
             index++;
 
             // All remaining args are positionals
-            while (index < args.length) {
+            while (index < argsToProcess.length) {
                 if (!allowPositionals && strict) {
-                    throw new TypeError(`Unexpected positional argument: ${args[index]}`);
+                    throw new TypeError(`Unexpected positional argument: ${argsToProcess[index]}`);
                 }
-                result.positionals.push(args[index]);
+                result.positionals.push(argsToProcess[index]);
                 if (tokens) {
                     result.tokens.push({
                         kind: 'positional',
                         index,
-                        value: args[index]
+                        value: argsToProcess[index]
                     });
                 }
                 index++;
@@ -158,10 +189,10 @@ function parseArgs(args, config) {
                 // Get value from inline or next arg
                 if (optionValue === undefined) {
                     index++;
-                    if (index >= args.length) {
+                    if (index >= argsToProcess.length) {
                         throw new TypeError(`Option --${optionName} requires a value`);
                     }
-                    optionValue = args[index];
+                    optionValue = argsToProcess[index];
                 }
 
                 if (option.multiple) {
@@ -191,10 +222,10 @@ function parseArgs(args, config) {
                 // Get value from inline or next arg
                 if (optionValue === undefined) {
                     index++;
-                    if (index >= args.length) {
+                    if (index >= argsToProcess.length) {
                         throw new TypeError(`Option --${optionName} requires a value`);
                     }
-                    optionValue = args[index];
+                    optionValue = argsToProcess[index];
                 }
 
                 // Parse and validate number
@@ -297,10 +328,10 @@ function parseArgs(args, config) {
                     } else {
                         // Get from next arg
                         index++;
-                        if (index >= args.length) {
+                        if (index >= argsToProcess.length) {
                             throw new TypeError(`Option -${shortOpt} requires a value`);
                         }
-                        optionValue = args[index];
+                        optionValue = argsToProcess[index];
                     }
 
                     if (option.multiple) {
@@ -336,10 +367,10 @@ function parseArgs(args, config) {
                     } else {
                         // Get from next arg
                         index++;
-                        if (index >= args.length) {
+                        if (index >= argsToProcess.length) {
                             throw new TypeError(`Option -${shortOpt} requires a value`);
                         }
-                        optionValue = args[index];
+                        optionValue = argsToProcess[index];
                     }
 
                     // Parse and validate number
@@ -477,7 +508,116 @@ function toKebabCase(str) {
 }
 
 // Format help message for options
-function formatHelp(config) {
+function formatHelp(...configs) {
+    // If multiple configs with commands, show all sub-commands
+    const commandConfigs = configs.filter(cfg => cfg && cfg.command);
+    const defaultConfig = configs.find(cfg => cfg && !cfg.command);
+    
+    if (commandConfigs.length > 0) {
+        // Multi-command help
+        const lines = [];
+        const usage = (defaultConfig && defaultConfig.usage) || 'Usage: <command> [options]';
+        lines.push(usage);
+        lines.push('');
+        lines.push('Commands:');
+        
+        // Calculate max command name width for alignment
+        let maxCommandWidth = 0;
+        for (const cfg of commandConfigs) {
+            maxCommandWidth = Math.max(maxCommandWidth, cfg.command.length);
+        }
+        
+        // List all commands with descriptions
+        for (const cfg of commandConfigs) {
+            const padding = ' '.repeat(maxCommandWidth - cfg.command.length);
+            const desc = cfg.description || '';
+            lines.push(`  ${cfg.command}${padding}${desc ? '  ' + desc : ''}`);
+        }
+        
+        // Show global options if default config exists
+        if (defaultConfig && defaultConfig.options && Object.keys(defaultConfig.options).length > 0) {
+            lines.push('');
+            lines.push('Global options:');
+            lines.push(formatOptionsHelp(defaultConfig.options, defaultConfig.allowNegative));
+        }
+        
+        // Show detailed help for each command
+        for (const cfg of commandConfigs) {
+            lines.push('');
+            lines.push(`Command: ${cfg.command}`);
+            if (cfg.description) {
+                lines.push(`  ${cfg.description}`);
+            }
+            
+            // Positionals
+            if (cfg.positionals && cfg.positionals.length > 0) {
+                lines.push('');
+                lines.push('  Positional arguments:');
+                for (const pos of cfg.positionals) {
+                    if (typeof pos === 'string') {
+                        lines.push(`    ${pos}`);
+                    } else {
+                        const required = pos.optional ? ' (optional)' : '';
+                        const variadic = pos.variadic ? '...' : '';
+                        const defaultVal = pos.default !== undefined ? ` (default: ${pos.default})` : '';
+                        const desc = pos.description ? ` - ${pos.description}` : '';
+                        lines.push(`    ${pos.name}${variadic}${required}${desc}${defaultVal}`);
+                    }
+                }
+            }
+            
+            // Options
+            if (cfg.options && Object.keys(cfg.options).length > 0) {
+                lines.push('');
+                lines.push('  Options:');
+                const optionsHelp = formatOptionsHelp(cfg.options, cfg.allowNegative, '    ');
+                lines.push(optionsHelp);
+            }
+        }
+        
+        return lines.join('\n');
+    } else {
+        // Single config or no commands - original behavior
+        const config = configs[0] || {};
+        return formatSingleConfigHelp(config);
+    }
+}
+
+// Helper to format options help
+function formatOptionsHelp(options, allowNegative, indent = '  ') {
+    allowNegative = allowNegative === undefined ? true : allowNegative;
+    const lines = [];
+    
+    // First pass: calculate max width of option keys
+    let maxKeyWidth = 0;
+    for (const [key, opt] of Object.entries(options)) {
+        const short = opt.short ? `-${opt.short}, ` : '    ';
+        const kebabKey = toKebabCase(key);
+        const isBooleanWithNegative = opt.type === 'boolean' && allowNegative;
+        const longFlag = isBooleanWithNegative ? `--[no-]${kebabKey}` : `--${kebabKey}`;
+        const keyText = `${short}${longFlag}`;
+        maxKeyWidth = Math.max(maxKeyWidth, keyText.length);
+    }
+    
+    // Second pass: format with padding
+    for (const [key, opt] of Object.entries(options)) {
+        const short = opt.short ? `-${opt.short}, ` : '    ';
+        const kebabKey = toKebabCase(key);
+        const isBooleanWithNegative = opt.type === 'boolean' && allowNegative;
+        const longFlag = isBooleanWithNegative ? `--[no-]${kebabKey}` : `--${kebabKey}`;
+        const keyText = `${short}${longFlag}`;
+        const padding = ' '.repeat(maxKeyWidth - keyText.length);
+        const desc = opt.description || '';
+        const defaultVal = opt.default !== undefined ? ` (default: ${opt.default})` : '';
+        
+        lines.push(`${indent}${keyText}${padding}${desc ? '  ' + desc : ''}${defaultVal}`);
+    }
+    
+    return lines.join('\n');
+}
+
+// Helper to format single config help (original behavior)
+function formatSingleConfigHelp(config) {
     const options = config.options || {};
     const usage = config.usage || 'Usage: [options]';
     const positionals = config.positionals || [];
@@ -507,31 +647,7 @@ function formatHelp(config) {
     if (Object.keys(options).length > 0) {
         lines.push('');
         lines.push('Options:');
-        
-        // First pass: calculate max width of option keys
-        let maxKeyWidth = 0;
-        for (const [key, opt] of Object.entries(options)) {
-            const short = opt.short ? `-${opt.short}, ` : '    ';
-            const kebabKey = toKebabCase(key);
-            const isBooleanWithNegative = opt.type === 'boolean' && allowNegative;
-            const longFlag = isBooleanWithNegative ? `--[no-]${kebabKey}` : `--${kebabKey}`;
-            const keyText = `${short}${longFlag}`;
-            maxKeyWidth = Math.max(maxKeyWidth, keyText.length);
-        }
-        
-        // Second pass: format with padding
-        for (const [key, opt] of Object.entries(options)) {
-            const short = opt.short ? `-${opt.short}, ` : '    ';
-            const kebabKey = toKebabCase(key);
-            const isBooleanWithNegative = opt.type === 'boolean' && allowNegative;
-            const longFlag = isBooleanWithNegative ? `--[no-]${kebabKey}` : `--${kebabKey}`;
-            const keyText = `${short}${longFlag}`;
-            const padding = ' '.repeat(maxKeyWidth - keyText.length);
-            const desc = opt.description || '';
-            const defaultVal = opt.default !== undefined ? ` (default: ${opt.default})` : '';
-            
-            lines.push(`  ${keyText}${padding}${desc ? '  ' + desc : ''}${defaultVal}`);
-        }
+        lines.push(formatOptionsHelp(options, allowNegative));
     }
     
     return lines.join('\n');
