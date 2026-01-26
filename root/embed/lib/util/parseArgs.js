@@ -15,7 +15,7 @@ function parseArgs(args, ...configs) {
     if (configs.length > 1) {
         // Multiple configs provided - check for sub-command matching
         const potentialCommand = args.length > 0 ? args[0] : null;
-        
+
         for (const cfg of configs) {
             if (cfg.command && cfg.command === potentialCommand) {
                 config = cfg;
@@ -42,7 +42,7 @@ function parseArgs(args, ...configs) {
     const positionalsConfig = config.positionals;
     const allowPositionals = config.allowPositionals !== undefined
         ? config.allowPositionals
-        : !strict;
+        : (config.positionals && config.positionals.length > 0);
 
     // Normalize positionals config
     let positionalDefs = null;
@@ -93,6 +93,11 @@ function parseArgs(args, ...configs) {
     // Convert camelCase to kebab-case for CLI flags
     function toKebabCase(str) {
         return str.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`);
+    }
+
+    // Convert kebab-case to camelCase for positional argument names
+    function toCamelCase(str) {
+        return str.replace(/-([a-z])/g, (match, letter) => letter.toUpperCase());
     }
 
     // Build option maps for quick lookup
@@ -230,7 +235,7 @@ function parseArgs(args, ...configs) {
 
                 // Parse and validate number
                 const numValue = option.type === 'integer' ? parseInt(optionValue, 10) : parseFloat(optionValue);
-                
+
                 if (isNaN(numValue)) {
                     throw new TypeError(`Option --${optionName} requires a valid ${option.type} value, got: ${optionValue}`);
                 }
@@ -375,7 +380,7 @@ function parseArgs(args, ...configs) {
 
                     // Parse and validate number
                     const numValue = option.type === 'integer' ? parseInt(optionValue, 10) : parseFloat(optionValue);
-                    
+
                     if (isNaN(numValue)) {
                         throw new TypeError(`Option -${shortOpt} requires a valid ${option.type} value, got: ${optionValue}`);
                     }
@@ -470,17 +475,17 @@ function parseArgs(args, ...configs) {
                     variadicValues.push(result.positionals[posIndex]);
                     posIndex++;
                 }
-                result.namedPositionals[def.name] = variadicValues;
+                result.namedPositionals[toCamelCase(def.name)] = variadicValues;
             } else {
                 if (posIndex < result.positionals.length) {
-                    result.namedPositionals[def.name] = result.positionals[posIndex];
+                    result.namedPositionals[toCamelCase(def.name)] = result.positionals[posIndex];
                     posIndex++;
                 } else if (!def.optional) {
-                    throw new TypeError(`Missing required positional argument: ${def.name}`);
+                    throw new TypeError(`Missing required argument: ${def.name}`);
                 } else if ('default' in def) {
-                    result.namedPositionals[def.name] = def.default;
+                    result.namedPositionals[toCamelCase(def.name)] = def.default;
                 } else {
-                    result.namedPositionals[def.name] = undefined;
+                    result.namedPositionals[toCamelCase(def.name)] = undefined;
                 }
             }
         }
@@ -490,11 +495,11 @@ function parseArgs(args, ...configs) {
             if (!def.optional) {
                 throw new TypeError(`Missing required positional argument: ${def.name}`);
             } else if (def.variadic) {
-                result.namedPositionals[def.name] = [];
+                result.namedPositionals[toCamelCase(def.name)] = [];
             } else if ('default' in def) {
-                result.namedPositionals[def.name] = def.default;
+                result.namedPositionals[toCamelCase(def.name)] = def.default;
             } else {
-                result.namedPositionals[def.name] = undefined;
+                result.namedPositionals[toCamelCase(def.name)] = undefined;
             }
         }
     }
@@ -512,35 +517,36 @@ function formatHelp(...configs) {
     // If multiple configs with commands, show all sub-commands
     const commandConfigs = configs.filter(cfg => cfg && cfg.command);
     const defaultConfig = configs.find(cfg => cfg && !cfg.command);
-    
+
     if (commandConfigs.length > 0) {
         // Multi-command help
         const lines = [];
-        const usage = (defaultConfig && defaultConfig.usage) || 'Usage: <command> [options]';
-        lines.push(usage);
-        lines.push('');
-        lines.push('Commands:');
-        
-        // Calculate max command name width for alignment
-        let maxCommandWidth = 0;
-        for (const cfg of commandConfigs) {
-            maxCommandWidth = Math.max(maxCommandWidth, cfg.command.length);
-        }
-        
-        // List all commands with descriptions
-        for (const cfg of commandConfigs) {
-            const padding = ' '.repeat(maxCommandWidth - cfg.command.length);
-            const desc = cfg.description || '';
-            lines.push(`  ${cfg.command}${padding}${desc ? '  ' + desc : ''}`);
-        }
-        
-        // Show global options if default config exists
-        if (defaultConfig && defaultConfig.options && Object.keys(defaultConfig.options).length > 0) {
+        if (commandConfigs.length > 1) {
+            const usage = (defaultConfig && defaultConfig.usage) || 'Usage: <command> [options]';
+            lines.push(usage);
             lines.push('');
-            lines.push('Global options:');
-            lines.push(formatOptionsHelp(defaultConfig.options, defaultConfig.allowNegative));
+            lines.push('Commands:');
+
+            // Calculate max command name width for alignment
+            let maxCommandWidth = 0;
+            for (const cfg of commandConfigs) {
+                maxCommandWidth = Math.max(maxCommandWidth, cfg.command.length);
+            }
+
+            // List all commands with descriptions
+            for (const cfg of commandConfigs) {
+                const padding = ' '.repeat(maxCommandWidth - cfg.command.length);
+                const desc = cfg.description || '';
+                lines.push(`  ${cfg.command}${padding}${desc ? '  ' + desc : ''}`);
+            }
+
+            // Show global options if default config exists
+            if (defaultConfig && defaultConfig.options && Object.keys(defaultConfig.options).length > 0) {
+                lines.push('');
+                lines.push('Global options:');
+                lines.push(formatOptionsHelp(defaultConfig.options, defaultConfig.allowNegative));
+            }
         }
-        
         // Show detailed help for each command
         for (const cfg of commandConfigs) {
             lines.push('');
@@ -552,24 +558,39 @@ function formatHelp(...configs) {
             if (cfg.description) {
                 lines.push(`  ${cfg.description}`);
             }
-            
+
             // Positionals
             if (cfg.positionals && cfg.positionals.length > 0) {
                 lines.push('');
                 lines.push('  Arguments:');
+
+                // Calculate max name width for alignment
+                let maxNameWidth = 0;
+                for (const pos of cfg.positionals) {
+                    if (typeof pos === 'string') {
+                        maxNameWidth = Math.max(maxNameWidth, pos.length);
+                    } else {
+                        const variadic = pos.variadic ? '...' : '';
+                        const nameWidth = pos.name.length + variadic.length;
+                        maxNameWidth = Math.max(maxNameWidth, nameWidth);
+                    }
+                }
+
                 for (const pos of cfg.positionals) {
                     if (typeof pos === 'string') {
                         lines.push(`    ${pos}`);
                     } else {
                         const required = pos.optional ? ' (optional)' : '';
                         const variadic = pos.variadic ? '...' : '';
+                        const nameText = `${pos.name}${variadic}`;
+                        const padding = ' '.repeat(maxNameWidth - nameText.length);
                         const defaultVal = pos.default !== undefined ? ` (default: ${pos.default})` : '';
-                        const desc = pos.description ? ` - ${pos.description}` : '';
-                        lines.push(`    ${pos.name}${variadic}${required}${desc}${defaultVal}`);
+                        const desc = pos.description ? pos.description : '';
+                        lines.push(`    ${nameText}${padding}${required}  ${desc}${defaultVal}`);
                     }
                 }
             }
-            
+
             // Options
             if (cfg.options && Object.keys(cfg.options).length > 0) {
                 lines.push('');
@@ -577,8 +598,13 @@ function formatHelp(...configs) {
                 const optionsHelp = formatOptionsHelp(cfg.options, cfg.allowNegative, '    ');
                 lines.push(optionsHelp);
             }
+
+            // Long description
+            if (cfg.longDescription) {
+                lines.push(cfg.longDescription);
+            }
         }
-        
+
         return lines.join('\n');
     } else {
         // Single config or no commands - original behavior
@@ -591,32 +617,32 @@ function formatHelp(...configs) {
 function formatOptionsHelp(options, allowNegative, indent = '  ') {
     allowNegative = allowNegative === undefined ? true : allowNegative;
     const lines = [];
-    
+
     // First pass: calculate max width of option keys
     let maxKeyWidth = 0;
     for (const [key, opt] of Object.entries(options)) {
         const short = opt.short ? `-${opt.short}, ` : '    ';
         const kebabKey = toKebabCase(key);
-        const isBooleanWithNegative = opt.type === 'boolean' && allowNegative;
+        const isBooleanWithNegative = opt.type === 'boolean' && allowNegative && key !== 'help';
         const longFlag = isBooleanWithNegative ? `--[no-]${kebabKey}` : `--${kebabKey}`;
         const keyText = `${short}${longFlag}`;
         maxKeyWidth = Math.max(maxKeyWidth, keyText.length);
     }
-    
+
     // Second pass: format with padding
     for (const [key, opt] of Object.entries(options)) {
         const short = opt.short ? `-${opt.short}, ` : '    ';
         const kebabKey = toKebabCase(key);
-        const isBooleanWithNegative = opt.type === 'boolean' && allowNegative;
+        const isBooleanWithNegative = opt.type === 'boolean' && allowNegative && key !== 'help';
         const longFlag = isBooleanWithNegative ? `--[no-]${kebabKey}` : `--${kebabKey}`;
         const keyText = `${short}${longFlag}`;
         const padding = ' '.repeat(maxKeyWidth - keyText.length);
         const desc = opt.description || '';
-        const defaultVal = opt.default !== undefined ? ` (default: ${opt.default})` : '';
-        
+        const defaultVal = opt.default !== undefined && key !== 'help' ? ` (default: ${opt.default})` : '';
+
         lines.push(`${indent}${keyText}${padding}${desc ? '  ' + desc : ''}${defaultVal}`);
     }
-    
+
     return lines.join('\n');
 }
 
@@ -626,34 +652,49 @@ function formatSingleConfigHelp(config) {
     const usage = config.usage || 'Usage: [options]';
     const positionals = config.positionals || [];
     const allowNegative = config.allowNegative === undefined ? true : config.allowNegative;
-    
+
     const lines = [];
     lines.push(usage);
-    
+
     // Format positionals if present
     if (positionals.length > 0) {
         lines.push('');
         lines.push('Arguments:');
+
+        // Calculate max name width for alignment
+        let maxNameWidth = 0;
+        for (const pos of positionals) {
+            if (typeof pos === 'string') {
+                maxNameWidth = Math.max(maxNameWidth, pos.length);
+            } else {
+                const variadic = pos.variadic ? '...' : '';
+                const nameWidth = pos.name.length + variadic.length;
+                maxNameWidth = Math.max(maxNameWidth, nameWidth);
+            }
+        }
+
         for (const pos of positionals) {
             if (typeof pos === 'string') {
                 lines.push(`  ${pos}`);
             } else {
                 const required = pos.optional ? ' (optional)' : '';
                 const variadic = pos.variadic ? '...' : '';
+                const nameText = `${pos.name}${variadic}`;
+                const padding = ' '.repeat(maxNameWidth - nameText.length);
                 const defaultVal = pos.default !== undefined ? ` (default: ${pos.default})` : '';
                 const desc = pos.description ? ` - ${pos.description}` : '';
-                lines.push(`  ${pos.name}${variadic}${required}${desc}${defaultVal}`);
+                lines.push(`  ${nameText}${padding}${required}${desc}${defaultVal}`);
             }
         }
     }
-    
+
     // Format options
     if (Object.keys(options).length > 0) {
         lines.push('');
         lines.push('Options:');
         lines.push(formatOptionsHelp(options, allowNegative));
     }
-    
+
     return lines.join('\n');
 }
 

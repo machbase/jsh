@@ -49,6 +49,7 @@ const help4 = parseArgs.formatHelp(
     {
         command: 'commit',
         description: 'Record changes to the repository',
+        longDescription: 'The commit command captures a snapshot of the project\'s currently staged changes.',
         options: {
             message: { type: 'string', short: 'm', description: 'Commit message' },
             all: { type: 'boolean', short: 'a', description: 'Stage all changes' }

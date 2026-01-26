@@ -894,7 +894,7 @@ func TestHttpEdgeCases(t *testing.T) {
 				
 				const req = http.request({
 					protocol: 'http:',
-					host: 'invalid-hostname-that-does-not-exist-12345.local',
+					host: 'invalid-hostname-that-does-not-exist-12345.com',
 					port: 80,
 					path: '/test',
 					method: 'GET'

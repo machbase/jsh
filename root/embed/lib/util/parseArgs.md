@@ -97,7 +97,11 @@ Each option in the `options` object can have:
 - `'integer'`: Parses value as integer, validates that no decimal point is present
 - `'float'`: Parses value as floating-point number, allows decimal values
 
-**Note:** Option names automatically convert from camelCase to kebab-case for CLI flags. For example, `userName` becomes `--user-name`, allowing you to use JavaScript naming conventions in code while following Linux CLI conventions on the command line.
+**Note on Naming Conventions:**
+- **Option names** automatically convert from camelCase to kebab-case for CLI flags. For example, `userName` becomes `--user-name`.
+- **Positional argument names** automatically convert from kebab-case to camelCase for `namedPositionals` keys. For example, `tql-name` becomes `tqlName`.
+
+This allows you to use JavaScript naming conventions (camelCase) in code while following traditional Linux CLI conventions (kebab-case) on the command line.
 
 ### Positional Definition
 
@@ -294,7 +298,19 @@ const result = parseArgs(['--no-color', '--verbose', '--no-enable-debug'], {
 
 ### Named Positionals
 
-Assign names to positional arguments for easier access:
+Assign names to positional arguments for easier access. Positional argument names are automatically converted from kebab-case to camelCase:
+
+```javascript
+const result = parseArgs(['my-tql-file'], {
+    options: {},
+    allowPositionals: true,
+    positionals: ['tql-name']  // kebab-case name
+});
+// result.positionals: ['my-tql-file']
+// result.namedPositionals: { tqlName: 'my-tql-file' }  // Converted to camelCase
+```
+
+Simple example with multiple positionals:
 
 ```javascript
 const result = parseArgs(['input.txt', 'output.txt'], {
@@ -306,48 +322,66 @@ const result = parseArgs(['input.txt', 'output.txt'], {
 // result.namedPositionals: { inputFile: 'input.txt', outputFile: 'output.txt' }
 ```
 
+Kebab-case positional names example:
+
+```javascript
+const result = parseArgs(['input.txt', 'output.txt'], {
+    options: {},
+    allowPositionals: true,
+    positionals: ['input-file', 'output-file']  // kebab-case names
+});
+// result.positionals: ['input.txt', 'output.txt']
+// result.namedPositionals: { 
+//     inputFile: 'input.txt',   // Converted to camelCase
+//     outputFile: 'output.txt'  // Converted to camelCase
+// }
+```
+
 ### Optional Positionals
 
-Make positional arguments optional with default values:
+Make positional arguments optional with default values. Names are automatically converted to camelCase:
 
 ```javascript
 const result = parseArgs(['input.txt'], {
     options: {},
     allowPositionals: true,
     positionals: [
-        'inputFile',
-        { name: 'outputFile', optional: true, default: 'stdout' }
+        'input-file',  // kebab-case name
+        { name: 'output-file', optional: true, default: 'stdout' }
     ]
 });
 // result.positionals: ['input.txt']
-// result.namedPositionals: { inputFile: 'input.txt', outputFile: 'stdout' }
+// result.namedPositionals: { 
+//     inputFile: 'input.txt',   // Converted to camelCase
+//     outputFile: 'stdout'      // Converted to camelCase
+// }
 ```
 
 ### Variadic Positionals
 
-Collect remaining arguments into an array:
+Collect remaining arguments into an array. Names are automatically converted to camelCase:
 
 ```javascript
 const result = parseArgs(['input.txt', 'output.txt', 'file1.js', 'file2.js', 'file3.js'], {
     options: {},
     allowPositionals: true,
     positionals: [
-        'inputFile',
-        'outputFile',
-        { name: 'files', variadic: true }
+        'input-file',
+        'output-file',
+        { name: 'source-files', variadic: true }  // kebab-case name
     ]
 });
 // result.positionals: ['input.txt', 'output.txt', 'file1.js', 'file2.js', 'file3.js']
 // result.namedPositionals: {
-//     inputFile: 'input.txt',
-//     outputFile: 'output.txt',
-//     files: ['file1.js', 'file2.js', 'file3.js']
+//     inputFile: 'input.txt',     // Converted to camelCase
+//     outputFile: 'output.txt',   // Converted to camelCase
+//     sourceFiles: ['file1.js', 'file2.js', 'file3.js']  // Converted to camelCase
 // }
 ```
 
 ### Named Positionals with Options
 
-Combine options and named positionals:
+Combine options and named positionals. Positional names are automatically converted to camelCase:
 
 ```javascript
 const result = parseArgs(['-v', '--config', 'app.json', 'src.js', 'dest.js'], {
@@ -356,11 +390,14 @@ const result = parseArgs(['-v', '--config', 'app.json', 'src.js', 'dest.js'], {
         config: { type: 'string' }
     },
     allowPositionals: true,
-    positionals: ['source', 'destination']
+    positionals: ['source-file', 'destination-file']  // kebab-case names
 });
 // result.values: { verbose: true, config: 'app.json' }
 // result.positionals: ['src.js', 'dest.js']
-// result.namedPositionals: { source: 'src.js', destination: 'dest.js' }
+// result.namedPositionals: { 
+//     sourceFile: 'src.js',       // Converted to camelCase
+//     destinationFile: 'dest.js'  // Converted to camelCase
+// }
 ```
 
 ### Sub-command Routing
@@ -661,11 +698,12 @@ This implementation is compatible with Node.js `util.parseArgs()` API, supportin
 Beyond Node.js `util.parseArgs()`, this implementation adds:
 
 - ✅ **Integer and float types** - Numeric types with automatic parsing and validation
-- ✅ **Named positionals** - Assign names to positional arguments
+- ✅ **Named positionals** - Assign names to positional arguments (kebab-case names automatically converted to camelCase)
 - ✅ **Optional positionals** - Make positional arguments optional with defaults
 - ✅ **Variadic positionals** - Collect remaining arguments into an array
 - ✅ **Positional validation** - Automatic validation of required arguments
 - ✅ **CamelCase to kebab-case conversion** - Automatically converts option names from camelCase to kebab-case for CLI flags
+- ✅ **Kebab-case to camelCase conversion** - Automatically converts positional argument names from kebab-case to camelCase for `namedPositionals` keys
 - ✅ **Sub-command routing** - Support for git-like sub-commands with different options per command
 
 ## License
