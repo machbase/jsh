@@ -2089,3 +2089,84 @@ func TestFSModule(t *testing.T) {
 		RunTest(t, tc)
 	}
 }
+
+func TestFSStream(t *testing.T) {
+	tests := []TestCase{
+		{
+			name: "fs_create_read_stream",
+			script: `
+				const fs = require('fs');
+				
+				// Create a test file
+				const testData = 'Line 1\nLine 2\nLine 3\n';
+				fs.writeFileSync('/work/stream_test.txt', testData, 'utf8');
+				
+				// Create read stream
+				const readStream = fs.createReadStream('/work/stream_test.txt', { encoding: 'utf8', bufferSize: 7 });
+				
+				let data = '';
+				readStream.on('data', chunk => {
+					data += chunk;
+				});
+				
+				readStream.on('end', () => {
+					console.println('Read stream data:');
+					console.println(data);
+					
+					// Cleanup
+					fs.unlinkSync('/work/stream_test.txt');
+				});
+				
+				readStream.on('error', err => {
+					console.println('Read stream error:', err.message);
+				});
+			`,
+			output: []string{
+				"Read stream data:",
+				"Line 1",
+				"Line 2",
+				"Line 3",
+				"",
+			},
+		},
+		{
+			name: "fs_create_write_stream",
+			script: `
+				const fs = require('fs');
+
+				// Create write stream
+				const writeStream = fs.createWriteStream('/work/stream_write_test.txt', { encoding: 'utf8' });
+
+				writeStream.on('finish', () => {
+					console.println('Write stream finished');
+
+					// Read back the file to verify
+					const content = fs.readFileSync('/work/stream_write_test.txt', 'utf8');
+					console.println('Written content:');
+					console.println(content.trim());
+
+					// Cleanup
+					fs.unlinkSync('/work/stream_write_test.txt');
+				});
+
+				writeStream.on('error', err => {
+					console.println('Write stream error:', err.message);
+				});
+
+				writeStream.write('First line\n');
+				writeStream.write('Second line\n');
+				writeStream.end('Third line\n');
+			`,
+			output: []string{
+				"Write stream finished",
+				"Written content:",
+				"First line",
+				"Second line",
+				"Third line",
+			},
+		},
+	}
+	for _, tc := range tests {
+		RunTest(t, tc)
+	}
+}

@@ -94,6 +94,10 @@ func (jr *JSRuntime) Run() error {
 					return
 				}
 				fmt.Fprintf(jr.Env.Writer(), "Interrupted: %s\n", ie.String())
+			} else if gerr, ok := err.(*goja.Exception); ok {
+				msg := gerr.String()
+				msg = strings.TrimPrefix(msg, "GoError: ")
+				fmt.Fprintf(jr.Env.Writer(), "%s\n", msg)
 			} else {
 				msg := err.Error()
 				msg = strings.TrimPrefix(msg, "GoError: ")

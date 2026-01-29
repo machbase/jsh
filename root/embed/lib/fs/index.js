@@ -1,6 +1,7 @@
 'use strict';
 
 const _fs = require('@jsh/fs');
+const EventEmitter = require('events');
 
 // Convert byte array to string
 function bytesToString(bytes) {
@@ -24,17 +25,13 @@ function stringToBytes(str) {
  */
 function readFileSync(path, options) {
     const fullPath = _fs.resolveAbsPath(path);
-    
     try {
         const raw = _fs.readFile(fullPath);
-        
         // Default to utf8 encoding if not specified
         const encoding = options?.encoding || (typeof options === 'string' ? options : 'utf8');
-        
         if (encoding === null || encoding === 'buffer') {
             return raw;
         }
-        
         return bytesToString(raw);
     } catch (e) {
         const error = new Error(`ENOENT: no such file or directory, open '${path}'`);
@@ -54,13 +51,11 @@ function readFileSync(path, options) {
  */
 function writeFileSync(path, data, options) {
     const fullPath = _fs.resolvePath(path);
-    
     try {
         const encoding = options?.encoding || (typeof options === 'string' ? options : 'utf8');
-        const bytes = (encoding === null || encoding === 'buffer' || Array.isArray(data)) 
-            ? data 
+        const bytes = (encoding === null || encoding === 'buffer' || Array.isArray(data))
+            ? data
             : stringToBytes(data);
-        
         _fs.writeFile(fullPath, bytes);
     } catch (e) {
         const error = new Error(`EACCES: permission denied, open '${path}'`);
@@ -70,6 +65,129 @@ function writeFileSync(path, data, options) {
         error.syscall = 'open';
         throw error;
     }
+}
+
+class ReadStream extends EventEmitter {
+    constructor(path, options) {
+        super();
+        this.fullPath = _fs.resolvePath(path);
+        this.encoding = options?.encoding || (typeof options === 'string' ? options : 'utf8');
+        this.flags = constants.O_RDONLY;
+        this.bufferSize = options?.bufferSize || 16 * 1024; // 16KB
+        this.eof = false;
+        try {
+            this.fd = _fs.open(this.fullPath, this.flags);
+            this.reader = _fs.hostReader(this.fd);
+        } catch (e) {
+            const error = new Error(`EACCES: permission denied, open '${path}'`);
+            error.code = 'EACCES';
+            error.errno = -13;
+            error.path = path;
+            error.syscall = 'open';
+            throw error;
+        }
+    }
+    _read() {
+        try {
+            const result = _fs.read(this.fd, this.bufferSize);
+            const buffer = result[0];
+            const bytesRead = result[1];
+            if (bytesRead <= 0) {
+                this.eof = true;
+                _fs.close(this.fd);
+                this.emit('end');
+                return bytesRead;
+            }
+
+            if (this.encoding === null || this.encoding === 'buffer') {
+                this.emit('data', buffer);
+                return buffer;
+            } else {
+                const str = bytesToString(buffer);
+                this.emit('data', str);
+                return str;
+            }
+        } catch (e) {
+            _fs.close(this.fd);
+            if (e.message === 'EOF') {
+                this.eof = true;
+                this.emit('end');
+            } else {
+                this.emit('error', e);
+            }
+            return bytesRead;
+        }
+    }
+    _readLoop() {
+        this._read();
+        if (!this.eof) {
+            setImmediate(() => {
+                this._readLoop();
+            });
+        }
+    }
+}
+/**
+ * Create a read stream to a file
+ * @param {string} path
+ * @param {object} options
+ * @returns
+ */
+function createReadStream(path, options) {
+    const rs = new ReadStream(path, options);
+    setImmediate(() => rs._readLoop());
+    return rs;
+}
+
+class WriteStream extends EventEmitter {
+    constructor(path, options) {
+        super();
+        this.fullPath = _fs.resolvePath(path);
+        this.encoding = options?.encoding || (typeof options === 'string' ? options : 'utf8');
+        this.flags = constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC;
+        try {
+            this.fd = _fs.open(this.fullPath, this.flags, options?.mode || 0o666);
+            this.writer = _fs.hostWriter(this.fd);
+        } catch (e) {
+            const error = new Error(`EACCES: permission denied, open '${path}'`);
+            error.code = 'EACCES';
+            error.errno = -13;
+            error.path = path;
+            error.syscall = 'open';
+            throw error;
+        }
+    }
+    write(data) {
+        try {
+            const bytes = (this.encoding === null || this.encoding === 'buffer' || Array.isArray(data))
+                ? data
+                : stringToBytes(data);
+            let n = _fs.write(this.fd, bytes);
+            this.emit('drain');
+            return true;
+        } catch (e) {
+            this.emit('error', e);
+            return false;
+        }
+    }
+    end(data) {
+        if (data !== undefined) {
+            this.write(data);
+        }
+        const ret = _fs.close(this.fd);
+        this.emit('finish');
+        return ret
+    }
+}
+
+/**
+ * Create a write stream to a file
+ * @param {string} path 
+ * @param {object} options 
+ * @returns 
+ */
+function createWriteStream(path, options) {
+    return new WriteStream(path, options);
 }
 
 /**
@@ -82,8 +200,8 @@ function appendFileSync(path, data, options) {
     const fullPath = _fs.resolvePath(path);
     try {
         const encoding = options?.encoding || (typeof options === 'string' ? options : 'utf8');
-        const newBytes = (encoding === null || encoding === 'buffer' || Array.isArray(data)) 
-            ? data 
+        const newBytes = (encoding === null || encoding === 'buffer' || Array.isArray(data))
+            ? data
             : stringToBytes(data);
         _fs.appendFile(fullPath, newBytes);
     } catch (e) {
@@ -92,9 +210,6 @@ function appendFileSync(path, data, options) {
         error.errno = -13;
         error.path = path;
         error.syscall = 'open';
-        throw error;
-        error.errno = -13;
-        error.path = path;
         throw error;
     }
 }
@@ -106,7 +221,7 @@ function appendFileSync(path, data, options) {
  */
 function existsSync(path) {
     const fullPath = _fs.resolvePath(path);
-    
+
     try {
         _fs.stat(fullPath);
         return true;
@@ -122,12 +237,12 @@ function existsSync(path) {
  */
 function statSync(path) {
     const fullPath = _fs.resolvePath(path);
-    
+
     try {
         const info = _fs.stat(fullPath);
         const mode = info.mode();
         const modeStr = mode.string();
-        
+
         return {
             isFile: () => !modeStr.startsWith('d') && !modeStr.startsWith('l'),
             isDirectory: () => modeStr.startsWith('d'),
@@ -171,10 +286,10 @@ function lstatSync(path) {
  */
 function readdirSync(path, options) {
     const fullPath = _fs.resolvePath(path);
-    
+
     try {
         const entries = _fs.readDir(fullPath);
-        
+
         if (!options?.recursive) {
             // Non-recursive mode
             if (options?.withFileTypes) {
@@ -182,7 +297,7 @@ function readdirSync(path, options) {
                     const info = entry.info();
                     const mode = info.mode();
                     const modeStr = mode.string();
-                    
+
                     return {
                         name: info.name(),
                         isFile: () => !modeStr.startsWith('d') && !modeStr.startsWith('l'),
@@ -198,35 +313,35 @@ function readdirSync(path, options) {
                 return entries.map((entry) => entry.info().name());
             }
         }
-        
+
         // Recursive mode
         const results = [];
         const visited = new Set();
-        
+
         const processDir = (dirPath, fullDirPath) => {
             if (visited.has(fullDirPath)) {
                 return;
             }
             visited.add(fullDirPath);
-            
+
             try {
                 const dirEntries = _fs.readDir(fullDirPath);
-                
+
                 for (const entry of dirEntries) {
                     const info = entry.info();
                     const name = info.name();
-                    
+
                     // Skip special entries
                     if (name === '.' || name === '..') {
                         continue;
                     }
-                    
+
                     const mode = info.mode();
                     const modeStr = mode.string();
                     const isDir = modeStr.startsWith('d');
-                    
+
                     const relativePath = dirPath ? `${dirPath}/${name}` : name;
-                    
+
                     if (options?.withFileTypes) {
                         results.push({
                             name: name,
@@ -242,7 +357,7 @@ function readdirSync(path, options) {
                     } else {
                         results.push(relativePath);
                     }
-                    
+
                     // Recurse into subdirectories
                     if (isDir) {
                         const fullSubPath = `${fullDirPath}/${name}`;
@@ -253,7 +368,7 @@ function readdirSync(path, options) {
                 // Ignore errors reading subdirectories
             }
         };
-        
+
         processDir('', fullPath);
         return results;
     } catch (e) {
@@ -273,13 +388,13 @@ function readdirSync(path, options) {
  */
 function mkdirSync(path, options) {
     const fullPath = _fs.resolvePath(path);
-    
+
     try {
         if (options?.recursive) {
             // Create parent directories if needed
             const parts = fullPath.split('/').filter(p => p);
             let current = '/';
-            
+
             for (const part of parts) {
                 current += part + '/';
                 try {
@@ -313,7 +428,7 @@ function rmdirSync(path, options) {
         if (options?.recursive) {
             // Remove directory and all contents
             const entries = readdirSync(path, { withFileTypes: true });
-            
+
             for (const entry of entries) {
                 if (entry.name === '.' || entry.name === '..') {
                     continue;
@@ -326,7 +441,7 @@ function rmdirSync(path, options) {
                 }
             }
         }
-        
+
         _fs.rmdir(fullPath);
     } catch (e) {
         const error = new Error(`ENOENT: no such file or directory, rmdir '${path}'`);
@@ -363,7 +478,7 @@ function rmSync(path, options) {
  */
 function unlinkSync(path) {
     const fullPath = _fs.resolvePath(path);
-    
+
     try {
         _fs.remove(fullPath);
     } catch (e) {
@@ -383,7 +498,7 @@ function unlinkSync(path) {
 function renameSync(oldPath, newPath) {
     const fullOldPath = _fs.resolvePath(oldPath);
     const fullNewPath = _fs.resolvePath(newPath);
-    
+
     try {
         _fs.rename(fullOldPath, fullNewPath);
     } catch (e) {
@@ -403,7 +518,7 @@ function renameSync(oldPath, newPath) {
  */
 function copyFileSync(src, dest, flags) {
     const COPYFILE_EXCL = 1;
-    
+
     // Check if destination exists when EXCL flag is set
     if (flags & COPYFILE_EXCL) {
         if (existsSync(dest)) {
@@ -414,7 +529,7 @@ function copyFileSync(src, dest, flags) {
             throw error;
         }
     }
-    
+
     const content = readFileSync(src, { encoding: null });
     writeFileSync(dest, content, { encoding: null });
 }
@@ -427,7 +542,7 @@ function copyFileSync(src, dest, flags) {
  */
 function cpSync(src, dest, options) {
     const srcStat = statSync(src);
-    
+
     if (srcStat.isDirectory()) {
         if (!options?.recursive) {
             const error = new Error(`EISDIR: illegal operation on a directory, cp '${src}' -> '${dest}'`);
@@ -437,25 +552,25 @@ function cpSync(src, dest, options) {
             error.syscall = 'cp';
             throw error;
         }
-        
+
         // Create destination directory if it doesn't exist
         if (!existsSync(dest)) {
             mkdirSync(dest, { recursive: true });
         }
-        
+
         // Copy all entries, excluding . and ..
         const entries = readdirSync(src, { withFileTypes: true });
         for (const entry of entries) {
             const name = entry.name;
-            
+
             // Skip special entries
             if (name === '.' || name === '..') {
                 continue;
             }
-            
+
             const srcPath = `${src}/${name}`;
             const destPath = `${dest}/${name}`;
-            
+
             if (entry.isDirectory()) {
                 cpSync(srcPath, destPath, options);
             } else {
@@ -475,7 +590,7 @@ function cpSync(src, dest, options) {
  */
 function chmodSync(path, mode) {
     const fullPath = _fs.resolvePath(path);
-    
+
     try {
         _fs.chmod(fullPath, mode);
     } catch (e) {
@@ -495,7 +610,7 @@ function chmodSync(path, mode) {
  */
 function chownSync(path, uid, gid) {
     const fullPath = _fs.resolvePath(path);
-    
+
     try {
         _fs.chown(fullPath, uid, gid);
     } catch (e) {
@@ -514,7 +629,7 @@ function chownSync(path, uid, gid) {
  */
 function symlinkSync(target, path) {
     const fullPath = _fs.resolvePath(path);
-    
+
     try {
         _fs.symlink(target, fullPath);
     } catch (e) {
@@ -533,7 +648,7 @@ function symlinkSync(target, path) {
  */
 function readlinkSync(path) {
     const fullPath = _fs.resolvePath(path);
-    
+
     try {
         return _fs.readlink(fullPath);
     } catch (e) {
@@ -552,12 +667,12 @@ function readlinkSync(path) {
  */
 function realpathSync(path) {
     const fullPath = _fs.resolvePath(path);
-    
+
     try {
         // Try to resolve symlinks
         let current = fullPath;
         let visited = new Set();
-        
+
         while (true) {
             if (visited.has(current)) {
                 // Circular symlink
@@ -567,9 +682,9 @@ function realpathSync(path) {
                 error.path = path;
                 throw error;
             }
-            
+
             visited.add(current);
-            
+
             try {
                 const stats = statSync(current);
                 if (!stats.isSymbolicLink()) {
@@ -595,7 +710,7 @@ function accessSync(path, mode) {
     const R_OK = 4; // Read permission
     const W_OK = 2; // Write permission
     const X_OK = 1; // Execute permission
-    
+
     if (!existsSync(path)) {
         const error = new Error(`ENOENT: no such file or directory, access '${path}'`);
         error.code = 'ENOENT';
@@ -603,7 +718,7 @@ function accessSync(path, mode) {
         error.path = path;
         throw error;
     }
-    
+
     // For simplicity, we assume if file exists, we have access
     // A real implementation would check actual permissions
 }
@@ -615,7 +730,7 @@ function accessSync(path, mode) {
  */
 function truncateSync(path, len) {
     len = len || 0;
-    
+
     if (len === 0) {
         writeFileSync(path, '', 'utf8');
     } else {
@@ -636,7 +751,7 @@ function truncateSync(path, len) {
 function openSync(path, flags, mode) {
     const fullPath = _fs.resolvePath(path);
     mode = mode || 0o666;
-    
+
     // Convert string flags to numeric flags
     // Use the OS-specific constants from the native module
     let numFlags = 0;
@@ -657,7 +772,7 @@ function openSync(path, flags, mode) {
     } else {
         numFlags = flags;
     }
-    
+
     try {
         const fd = _fs.open(fullPath, numFlags, mode);
         return fd;
@@ -698,17 +813,17 @@ function closeSync(fd) {
  */
 function readSync(fd, buffer, offset, length, position) {
     offset = offset || 0;
-    
+
     try {
         const result = _fs.read(fd, length);
         const data = result[0];
         const bytesRead = result[1];
-        
+
         // Copy data into buffer at offset
         for (let i = 0; i < bytesRead; i++) {
             buffer[offset + i] = data[i];
         }
-        
+
         return bytesRead;
     } catch (e) {
         const error = new Error(`EBADF: bad file descriptor, read`);
@@ -730,7 +845,7 @@ function readSync(fd, buffer, offset, length, position) {
  */
 function writeSync(fd, buffer, offset, length, position) {
     offset = offset || 0;
-    
+
     let data;
     if (typeof buffer === 'string') {
         // Convert string to bytes
@@ -740,10 +855,10 @@ function writeSync(fd, buffer, offset, length, position) {
         data = buffer;
         length = length || (buffer.length - offset);
     }
-    
+
     // Extract the portion to write
     const writeData = data.slice(offset, offset + length);
-    
+
     try {
         return _fs.write(fd, writeData);
     } catch (e) {
@@ -765,7 +880,7 @@ function fstatSync(fd) {
         const info = _fs.fstat(fd);
         const mode = info.mode();
         const modeStr = mode.string();
-        
+
         return {
             name: info.name(),
             size: info.size(),
@@ -858,12 +973,12 @@ const constants = {
     R_OK: 4,
     W_OK: 2,
     X_OK: 1,
-    
+
     // File Copy Constants
     COPYFILE_EXCL: 1,
     COPYFILE_FICLONE: 2,
     COPYFILE_FICLONE_FORCE: 4,
-    
+
     // File Open Constants - use OS-specific values from native module
     O_RDONLY: _fs.O_RDONLY,
     O_WRONLY: _fs.O_WRONLY,
@@ -885,28 +1000,28 @@ module.exports = {
     unlinkSync,
     renameSync,
     truncateSync,
-    
+
     // Directory operations
     readdirSync,
     mkdirSync,
     rmdirSync,
     rmSync,
-    
+
     // File info
     statSync,
     lstatSync,
     existsSync,
     accessSync,
-    
+
     // Symlink operations
     symlinkSync,
     readlinkSync,
     realpathSync,
-    
+
     // Permissions
     chmodSync,
     chownSync,
-    
+
     // File descriptor operations
     openSync,
     closeSync,
@@ -917,10 +1032,14 @@ module.exports = {
     fchownSync,
     fsyncSync,
     fdatasyncSync,
-    
+
+    // Stream operations
+    createWriteStream,
+    createReadStream,
+
     // Constants
     constants,
-    
+
     // Aliases for Node.js compatibility
     readFile: readFileSync,
     writeFile: writeFileSync,

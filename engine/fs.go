@@ -369,6 +369,26 @@ func (m *FS) CloseFD(fd int) error {
 	return file.Close()
 }
 
+func (m *FS) HostWriterFD(fd int) (io.Writer, error) {
+	m.fdMu.Lock()
+	file, ok := m.fds[fd]
+	m.fdMu.Unlock()
+	if !ok {
+		return nil, fs.ErrInvalid
+	}
+	return file, nil
+}
+
+func (m *FS) HostReaderFD(fd int) (io.Reader, error) {
+	m.fdMu.Lock()
+	file, ok := m.fds[fd]
+	m.fdMu.Unlock()
+	if !ok {
+		return nil, fs.ErrInvalid
+	}
+	return file, nil
+}
+
 // ReadFD reads from a file descriptor into a buffer
 func (m *FS) ReadFD(fd int, length int) ([]byte, int, error) {
 	m.fdMu.Lock()
@@ -654,6 +674,8 @@ func (jr *JSRuntime) Filesystem(vm *goja.Runtime, module *goja.Object) {
 		return jr.filesystem.OpenFD(path, flags, mode)
 	})
 	exports.Set("close", func(fd int) error { return jr.filesystem.CloseFD(fd) })
+	exports.Set("hostWriter", func(fd int) (io.Writer, error) { return jr.filesystem.HostWriterFD(fd) })
+	exports.Set("hostReader", func(fd int) (io.Reader, error) { return jr.filesystem.HostReaderFD(fd) })
 	exports.Set("read", func(fd int, length int) ([]byte, int, error) {
 		return jr.filesystem.ReadFD(fd, length)
 	})

@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/dop251/goja"
 )
 
 type TestCase struct {
@@ -54,7 +56,11 @@ func RunTest(t *testing.T, tc TestCase) {
 			tc.preTest(jr)
 		}
 		if err := jr.Run(); err != nil {
-			t.Fatalf("Unexpected error: %v", err)
+			if gerr, ok := err.(*goja.Exception); ok {
+				t.Fatalf("Unexpected error: %v", gerr.String())
+			} else {
+				t.Fatalf("Unexpected error: %v", err)
+			}
 		}
 		if tc.postTest != nil {
 			tc.postTest(jr)
