@@ -26,6 +26,7 @@ func SetConsole(vm *goja.Runtime, w io.Writer) *goja.Object {
 	con.Set("println", doPrintln)
 	con.Set("print", doPrint)
 	con.Set("printf", doPrintf)
+	con.Set("writer", w) // expose writer for advanced usage, it used in pretty box.SetOutput()
 	return con
 }
 
