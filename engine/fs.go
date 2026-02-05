@@ -188,6 +188,39 @@ func (m *FS) Stat(name string) (fs.FileInfo, error) {
 	return f.Stat()
 }
 
+func (m *FS) CountLines(name string) (int, error) {
+	name = CleanPath(name)
+	f, err := m.Open(name)
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+
+	// Use large buffer for optimal performance
+	const bufferSize = 64 * 1024 // 64KB buffer
+	buffer := make([]byte, bufferSize)
+	count := 0
+
+	for {
+		n, err := f.Read(buffer)
+		if n > 0 {
+			// Count newline characters in the buffer
+			for i := 0; i < n; i++ {
+				if buffer[i] == '\n' {
+					count++
+				}
+			}
+		}
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return count, err
+		}
+	}
+	return count, nil
+}
+
 func (m *FS) ReadFile(name string) ([]byte, error) {
 	name = CleanPath(name)
 	f, err := m.Open(name)
@@ -389,23 +422,29 @@ func (m *FS) HostReaderFD(fd int) (io.Reader, error) {
 	return file, nil
 }
 
-// ReadFD reads from a file descriptor into a buffer
-func (m *FS) ReadFD(fd int, length int) ([]byte, int, error) {
+// ReadFD reads from a file descriptor into the provided buffer at the specified offset
+// The buffer must be pre-allocated by the caller
+// Reads up to length bytes into buffer[offset:offset+length]
+// Returns the number of bytes read
+func (m *FS) ReadFD(fd int, buffer []byte, offset int, length int) (int, error) {
 	m.fdMu.Lock()
 	file, ok := m.fds[fd]
 	m.fdMu.Unlock()
 
 	if !ok {
-		return nil, 0, fs.ErrInvalid
+		return 0, fs.ErrInvalid
 	}
 
-	buffer := make([]byte, length)
-	n, err := file.Read(buffer)
+	if offset < 0 || length < 0 || offset+length > len(buffer) {
+		return 0, fs.ErrInvalid
+	}
+
+	n, err := file.Read(buffer[offset : offset+length])
 	if err != nil && err != io.EOF {
-		return nil, 0, err
+		return 0, err
 	}
 
-	return buffer[:n], n, nil
+	return n, nil
 }
 
 // WriteFD writes data to a file descriptor
@@ -676,8 +715,26 @@ func (jr *JSRuntime) Filesystem(vm *goja.Runtime, module *goja.Object) {
 	exports.Set("close", func(fd int) error { return jr.filesystem.CloseFD(fd) })
 	exports.Set("hostWriter", func(fd int) (io.Writer, error) { return jr.filesystem.HostWriterFD(fd) })
 	exports.Set("hostReader", func(fd int) (io.Reader, error) { return jr.filesystem.HostReaderFD(fd) })
-	exports.Set("read", func(fd int, length int) ([]byte, int, error) {
-		return jr.filesystem.ReadFD(fd, length)
+	exports.Set("read", func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 4 {
+			panic(vm.NewTypeError("read requires 4 arguments: fd, buffer, offset, length"))
+		}
+		fd := int(call.Arguments[0].ToInteger())
+		bufferObj := call.Arguments[1].Export()
+		offset := int(call.Arguments[2].ToInteger())
+		length := int(call.Arguments[3].ToInteger())
+
+		buffer, ok := bufferObj.([]byte)
+		if !ok {
+			panic(vm.NewTypeError("buffer argument must be a Uint8Array"))
+		}
+		// Read data from file
+		bytesRead, err := jr.filesystem.ReadFD(fd, buffer, offset, length)
+		if err != nil {
+			panic(vm.NewGoError(err))
+		}
+
+		return vm.ToValue(bytesRead)
 	})
 	exports.Set("write", func(fd int, data []byte) (int, error) {
 		return jr.filesystem.WriteFD(fd, data)
@@ -686,6 +743,7 @@ func (jr *JSRuntime) Filesystem(vm *goja.Runtime, module *goja.Object) {
 	exports.Set("fchmod", func(fd int, mode uint32) error { return jr.filesystem.FchmodFD(fd, mode) })
 	exports.Set("fchown", func(fd int, uid, gid int) error { return jr.filesystem.FchownFD(fd, uid, gid) })
 	exports.Set("fsync", func(fd int) error { return jr.filesystem.FsyncFD(fd) })
+	exports.Set("countLines", func(path string) (int, error) { return jr.filesystem.CountLines(path) })
 
 	// Export OS-specific file constants from Go
 	// These values are platform-specific and must come from the os package

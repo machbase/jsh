@@ -24,8 +24,8 @@ github.com/google/pprof v0.0.0-20251213031049-b05bdaca462f h1:HU1RgM6NALf/KW9HEY
 github.com/google/pprof v0.0.0-20251213031049-b05bdaca462f/go.mod h1:67FPmZWbr+KDT/VlpWtw6sO9XSjpJmLuHpoLmWiTGgY=
 github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aNNg=
 github.com/gorilla/websocket v1.5.3/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
-github.com/hymkor/go-multiline-ny v0.22.3 h1:+4ttpG8MQK6F3uWqxbWFoDlIAN8bv4BmH7HyxTIfHn0=
-github.com/hymkor/go-multiline-ny v0.22.3/go.mod h1:9FsFQa3nIhxAjz1yL0kK/Oya/LB4fBsHckY3ZqBcTJY=
+github.com/hymkor/go-multiline-ny v0.22.4 h1:Ag2rkBpDnr3jp+AHe1CuXSOQ4AQ8D0+gBNVf+BAX+/0=
+github.com/hymkor/go-multiline-ny v0.22.4/go.mod h1:v2lqQooHVAO53WICAIbgTn74bQtzsg4tFn29d+7JPwY=
 github.com/jinzhu/copier v0.3.5 h1:GlvfUwHk62RokgqVNvYsku0TATCF7bAHVwEXoBh3iJg=
 github.com/jinzhu/copier v0.3.5/go.mod h1:DfbEm0FYsaqBcKcFuvmOZb218JkPGtvSHsKg8S8hyyg=
 github.com/mattn/go-colorable v0.1.14 h1:9A9LHSqF/7dyVVX6g0U9cwm9pG3kP9gSzcuIPHPsaIE=
@@ -40,10 +40,10 @@ github.com/mochi-mqtt/server/v2 v2.7.9 h1:y0g4vrSLAag7T07l2oCzOa/+nKVLoazKEWAArw
 github.com/mochi-mqtt/server/v2 v2.7.9/go.mod h1:lZD3j35AVNqJL5cezlnSkuG05c0FCHSsfAKSPBOSbqc=
 github.com/nyaosorg/go-box/v3 v3.0.0 h1:W5qfScEkKBoD68gbP/lwfWlvcTRB0rwXkhL+9iC62xI=
 github.com/nyaosorg/go-box/v3 v3.0.0/go.mod h1:70GsE9mIh7JKVCxt71q3jEijO6C9YJmOZqWpPa9w+GY=
-github.com/nyaosorg/go-readline-ny v1.12.3 h1:nF+ywMS1XFpIeONssuUxmu20S2tQIqkq1ahdEXBhIYU=
-github.com/nyaosorg/go-readline-ny v1.12.3/go.mod h1:pFXLTklUi8JVi6gI3HdnA3Wak/7cl+kx2q8kIIiAf/c=
-github.com/nyaosorg/go-ttyadapter v0.2.0 h1:2DEL0MeesXRzuppCUlZIwY4vUKTjfIL+8aoR+pUUzGg=
-github.com/nyaosorg/go-ttyadapter v0.2.0/go.mod h1:w6ySb/Y8rpr0uIju4vN/TMRHC/6ayabORHmEVs6d/qE=
+github.com/nyaosorg/go-readline-ny v1.14.1 h1:bWyXpR6jRaCXysx4bnioxk36+YjQ6dypHKMjHnzIXdk=
+github.com/nyaosorg/go-readline-ny v1.14.1/go.mod h1:/BDf3/H/AScnvey4LoDws1bjTZDB76EE7uKnW2apoKU=
+github.com/nyaosorg/go-ttyadapter v0.3.0 h1:/Y7+rGJ0LEcs+AExevwNmND2VJvvpBmgbMuCbntKq3c=
+github.com/nyaosorg/go-ttyadapter v0.3.0/go.mod h1:w6ySb/Y8rpr0uIju4vN/TMRHC/6ayabORHmEVs6d/qE=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/rs/xid v1.5.0 h1:mKX4bl4iPYJtEIxp6CYiUuLQ/8DYMoz0PUdtGgMFRVc=

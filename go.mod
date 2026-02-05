@@ -7,11 +7,11 @@ require (
 	github.com/dop251/goja_nodejs v0.0.0-20251015164255-5e94316bedaf
 	github.com/eclipse/paho.golang v0.23.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/hymkor/go-multiline-ny v0.22.3
+	github.com/hymkor/go-multiline-ny v0.22.4
 	github.com/mattn/go-colorable v0.1.14
 	github.com/mochi-mqtt/server/v2 v2.7.9
-	github.com/nyaosorg/go-readline-ny v1.12.3
-	github.com/nyaosorg/go-ttyadapter v0.2.0
+	github.com/nyaosorg/go-readline-ny v1.14.1
+	github.com/nyaosorg/go-ttyadapter v0.3.0
 )
 
 require (

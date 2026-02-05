@@ -100,7 +100,7 @@ func New(conf Config) (*JSRuntime, error) {
 				return nil, fmt.Errorf("command not executable: %s", cmd)
 			}
 			// replace shebang line as javascript comment
-			if b[0] == '#' && b[1] == '!' {
+			if len(b) > 2 && b[0] == '#' && b[1] == '!' {
 				b[0], b[1] = '/', '/'
 			}
 			scriptName = cmd

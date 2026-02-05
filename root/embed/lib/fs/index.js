@@ -3,6 +3,13 @@
 const _fs = require('@jsh/fs');
 const EventEmitter = require('events');
 
+// Polyfill for Buffer.isBuffer if not available
+if (!Buffer.isBuffer) {
+    Buffer.isBuffer = function (obj) {
+        return obj && obj.constructor && obj.constructor.name === 'Buffer';
+    };
+}
+
 // Convert byte array to string
 function bytesToString(bytes) {
     return String.fromCharCode(...bytes);
@@ -73,7 +80,8 @@ class ReadStream extends EventEmitter {
         this.fullPath = _fs.resolvePath(path);
         this.encoding = options?.encoding || (typeof options === 'string' ? options : 'utf8');
         this.flags = constants.O_RDONLY;
-        this.bufferSize = options?.bufferSize || 16 * 1024; // 16KB
+        // Use highWaterMark for Node.js compatibility, fallback to bufferSize for backward compatibility
+        this.bufferSize = options?.highWaterMark || options?.bufferSize || 64 * 1024; // 64KB (Node.js default)
         this.eof = false;
         try {
             this.fd = _fs.open(this.fullPath, this.flags);
@@ -89,9 +97,12 @@ class ReadStream extends EventEmitter {
     }
     _read() {
         try {
-            const result = _fs.read(this.fd, this.bufferSize);
-            const buffer = result[0];
-            const bytesRead = result[1];
+            // Allocate buffer once and reuse it
+            if (!this._buffer) {
+                // Use Array for compatibility with _fs.read()
+                this._buffer = Buffer.alloc(this.bufferSize);
+            }
+            const bytesRead = _fs.read(this.fd, this._buffer, 0, this.bufferSize);
             if (bytesRead <= 0) {
                 this.eof = true;
                 _fs.close(this.fd);
@@ -100,10 +111,20 @@ class ReadStream extends EventEmitter {
             }
 
             if (this.encoding === null || this.encoding === 'buffer') {
-                this.emit('data', buffer);
-                return buffer;
+                // Create Uint8Array view directly from buffer without slice
+                // Must copy since buffer will be reused in next read
+                const uint8Data = new Uint8Array(bytesRead);
+                for (let i = 0; i < bytesRead; i++) {
+                    uint8Data[i] = this._buffer[i];
+                }
+                this.emit('data', uint8Data);
+                return uint8Data;
             } else {
-                const str = bytesToString(buffer);
+                // For string mode, convert only the bytes read
+                let str = '';
+                for (let i = 0; i < bytesRead; i++) {
+                    str += String.fromCharCode(this._buffer[i]);
+                }
                 this.emit('data', str);
                 return str;
             }
@@ -125,6 +146,31 @@ class ReadStream extends EventEmitter {
                 this._readLoop();
             });
         }
+    }
+    pipe(destination, options) {
+        if (!destination || typeof destination.write !== 'function') {
+            throw new TypeError('Destination must be a writable stream');
+        }
+
+        const end = options && options.end !== undefined ? options.end : true;
+
+        this.on('data', (chunk) => {
+            destination.write(chunk);
+        });
+
+        this.on('end', () => {
+            if (end) {
+                destination.end();
+            }
+        });
+
+        this.on('error', (err) => {
+            if (destination.emit) {
+                destination.emit('error', err);
+            }
+        });
+
+        return destination;
     }
 }
 /**
@@ -264,6 +310,20 @@ function statSync(path) {
         error.code = 'ENOENT';
         error.errno = -2;
         error.path = path;
+        throw error;
+    }
+}
+
+function countLinesSync(path) {
+    const fullPath = _fs.resolvePath(path);
+    try {
+        return _fs.countLines(fullPath);
+    } catch (e) {
+        const error = new Error(`ENOENT: no such file or directory, open '${path}'`);
+        error.code = 'ENOENT';
+        error.errno = -2;
+        error.path = path;
+        error.syscall = 'open';
         throw error;
     }
 }
@@ -805,7 +865,7 @@ function closeSync(fd) {
 /**
  * Read from a file descriptor
  * @param {number} fd - File descriptor
- * @param {Array} buffer - Buffer to read into
+ * @param {Array|Buffer} buffer - Buffer or Array to read into
  * @param {number} offset - Offset in buffer to start writing (default: 0)
  * @param {number} length - Number of bytes to read
  * @param {number} position - Position to read from (null = current position)
@@ -815,15 +875,9 @@ function readSync(fd, buffer, offset, length, position) {
     offset = offset || 0;
 
     try {
-        const result = _fs.read(fd, length);
-        const data = result[0];
-        const bytesRead = result[1];
-
-        // Copy data into buffer at offset
-        for (let i = 0; i < bytesRead; i++) {
-            buffer[offset + i] = data[i];
-        }
-
+        // _fs.read will copy data into the buffer (Array or Uint8Array)
+        // at the specified offset
+        const bytesRead = _fs.read(fd, buffer, offset, length);
         return bytesRead;
     } catch (e) {
         const error = new Error(`EBADF: bad file descriptor, read`);
@@ -1012,6 +1066,7 @@ module.exports = {
     lstatSync,
     existsSync,
     accessSync,
+    countLinesSync,
 
     // Symlink operations
     symlinkSync,
@@ -1054,6 +1109,7 @@ module.exports = {
     rm: rmSync,
     stat: statSync,
     lstat: lstatSync,
+    countLines: countLinesSync,
     exists: existsSync,
     access: accessSync,
     symlink: symlinkSync,

@@ -1311,7 +1311,7 @@ func TestFSModule(t *testing.T) {
 				console.println('Opened file for reading, fd:', fd2);
 				
 				// Read from file descriptor
-				const buffer = new Array(100);
+				const buffer = Buffer.alloc(100);
 				const bytesRead = fs.readSync(fd2, buffer, 0, 100);
 				console.println('Bytes read:', bytesRead);
 				
@@ -1815,7 +1815,7 @@ func TestFSModule(t *testing.T) {
 				
 				// Read via fd
 				const fd2 = fs.openSync('/work/fd_test.txt', 'r');
-				const buffer = new Array(100);
+				const buffer = Buffer.alloc(100);
 				const bytesRead = fs.readSync(fd2, buffer, 0, 100);
 				fs.closeSync(fd2);
 				console.println('Read bytes via fd:', bytesRead);

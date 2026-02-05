@@ -285,14 +285,14 @@ class Duplex extends EventEmitter {
             throw new TypeError('Duplex stream requires both reader and writer');
         }
         this.raw = _stream.NewDuplex(this, reader, writer, process.dispatchEvent);
-        
+
         // Readable properties
         this.readable = true;
         this.readableEnded = false;
         this.readableFlowing = null;
         this.readableHighWaterMark = 16384;
         this.readableLength = 0;
-        
+
         // Writable properties
         this.writable = true;
         this.writableEnded = false;
@@ -527,14 +527,14 @@ class PassThrough extends EventEmitter {
     constructor() {
         super();
         this.raw = _stream.NewPassThrough(this, process.dispatchEvent);
-        
+
         // Readable properties
         this.readable = true;
         this.readableEnded = false;
         this.readableFlowing = null;
         this.readableHighWaterMark = 16384;
         this.readableLength = 0;
-        
+
         // Writable properties
         this.writable = true;
         this.writableEnded = false;
@@ -764,6 +764,265 @@ class PassThrough extends EventEmitter {
     }
 }
 
+// Transform Stream - for transforming data
+class Transform extends EventEmitter {
+    constructor(options) {
+        super();
+        options = options || {};
+
+        // Readable properties
+        this.readable = true;
+        this.readableEnded = false;
+        this.readableFlowing = null;
+        this.readableHighWaterMark = 16384;
+        this.readableLength = 0;
+
+        // Writable properties
+        this.writable = true;
+        this.writableEnded = false;
+        this.writableFinished = false;
+        this.writableHighWaterMark = 16384;
+        this.writableLength = 0;
+
+        // Internal state
+        this._buffer = [];
+        this._transforming = false;
+    }
+
+    _transform(chunk, encoding, callback) {
+        // Default implementation: pass through
+        callback(null, chunk);
+    }
+
+    _flush(callback) {
+        // Default implementation: do nothing
+        callback(null);
+    }
+
+    write(chunk, encoding, callback) {
+        if (typeof encoding === 'function') {
+            callback = encoding;
+            encoding = 'utf8';
+        }
+
+        if (!this.writable) {
+            const err = new Error('Stream is not writable');
+            if (callback) {
+                callback(err);
+            } else {
+                this.emit('error', err);
+            }
+            return false;
+        }
+
+        try {
+            let data;
+            if (typeof chunk === 'string') {
+                data = Buffer.from(chunk, encoding || 'utf8');
+            } else if (Buffer.isBuffer(chunk)) {
+                data = chunk;
+            } else if (chunk instanceof Uint8Array) {
+                data = Buffer.from(chunk);
+            } else {
+                throw new TypeError('Invalid chunk type: ' + typeof chunk);
+            }
+
+            this._transform(data, encoding, (err, transformed) => {
+                if (err) {
+                    if (callback) {
+                        callback(err);
+                    } else {
+                        this.emit('error', err);
+                    }
+                    return;
+                }
+
+                if (callback) {
+                    callback();
+                }
+            });
+
+            return true;
+        } catch (err) {
+            if (callback) {
+                callback(err);
+            } else {
+                this.emit('error', err);
+            }
+            return false;
+        }
+    }
+
+    push(chunk) {
+        if (chunk === null) {
+            this.readableEnded = true;
+            this.readable = false;
+            this.emit('end');
+            return false;
+        }
+
+        let data;
+        if (typeof chunk === 'string') {
+            data = Buffer.from(chunk, 'utf8');
+        } else if (Buffer.isBuffer(chunk)) {
+            data = chunk;
+        } else if (chunk instanceof Uint8Array) {
+            data = Buffer.from(chunk);
+        } else {
+            data = Buffer.from(String(chunk));
+        }
+
+        this._buffer.push(data);
+        this.emit('data', data);
+        return true;
+    }
+
+    end(chunk, encoding, callback) {
+        if (typeof chunk === 'function') {
+            callback = chunk;
+            chunk = null;
+            encoding = null;
+        } else if (typeof encoding === 'function') {
+            callback = encoding;
+            encoding = null;
+        }
+
+        if (this.writableEnded) {
+            if (callback) {
+                callback(new Error('Stream already ended'));
+            }
+            return this;
+        }
+
+        const finishEnd = () => {
+            this._flush((err, data) => {
+                if (err) {
+                    if (callback) {
+                        callback(err);
+                    } else {
+                        this.emit('error', err);
+                    }
+                    return;
+                }
+
+                if (data) {
+                    this.push(data);
+                }
+
+                this.writableEnded = true;
+                this.writableFinished = true;
+                this.writable = false;
+
+                this.emit('finish');
+
+                // Push null to signal end of readable side
+                this.push(null);
+
+                if (callback) {
+                    callback();
+                }
+            });
+        };
+
+        if (chunk) {
+            this.write(chunk, encoding, (err) => {
+                if (err) {
+                    if (callback) {
+                        callback(err);
+                    } else {
+                        this.emit('error', err);
+                    }
+                    return;
+                }
+                finishEnd();
+            });
+        } else {
+            finishEnd();
+        }
+
+        return this;
+    }
+
+    pipe(destination, options) {
+        if (!destination || typeof destination.write !== 'function') {
+            throw new TypeError('Destination must be a writable stream');
+        }
+
+        const end = options && options.end !== undefined ? options.end : true;
+
+        const onData = (chunk) => {
+            const canContinue = destination.write(chunk);
+            if (!canContinue && this.pause) {
+                this.pause();
+            }
+        };
+
+        const onDrain = () => {
+            if (this.readable && this.resume) {
+                this.resume();
+            }
+        };
+
+        const onEnd = () => {
+            if (end) {
+                destination.end();
+            }
+        };
+
+        const onError = (err) => {
+            destination.emit('error', err);
+        };
+
+        this.on('data', onData);
+        this.on('end', onEnd);
+        this.on('error', onError);
+        if (destination.on) {
+            destination.on('drain', onDrain);
+        }
+
+        // Cleanup on finish
+        const cleanup = () => {
+            this.removeListener('data', onData);
+            this.removeListener('end', onEnd);
+            this.removeListener('error', onError);
+            if (destination.removeListener) {
+                destination.removeListener('drain', onDrain);
+            }
+        };
+
+        if (destination.once) {
+            destination.once('close', cleanup);
+        }
+        this.once('end', cleanup);
+
+        return destination;
+    }
+
+    destroy(error) {
+        if (this.destroyed) return this;
+        this.destroyed = true;
+        this.readable = false;
+        this.writable = false;
+
+        if (error) {
+            this.emit('error', error);
+        }
+
+        this.emit('close');
+        return this;
+    }
+
+    pause() {
+        this.readableFlowing = false;
+        return this;
+    }
+
+    resume() {
+        this.readableFlowing = true;
+        return this;
+    }
+}
+
 // Helper to create a Buffer-like object from Uint8Array
 if (typeof Buffer === 'undefined') {
     global.Buffer = class Buffer extends Uint8Array {
@@ -788,6 +1047,11 @@ if (typeof Buffer === 'undefined') {
             return decoder.decode(this);
         }
     };
+} else if (!Buffer.isBuffer) {
+    // Buffer exists but isBuffer method is missing
+    Buffer.isBuffer = function (obj) {
+        return obj instanceof Buffer || obj instanceof Uint8Array;
+    };
 }
 
 module.exports = {
@@ -795,4 +1059,5 @@ module.exports = {
     Writable,
     Duplex,
     PassThrough,
+    Transform,
 };

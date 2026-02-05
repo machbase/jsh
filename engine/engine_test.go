@@ -56,8 +56,8 @@ func RunTest(t *testing.T, tc TestCase) {
 			tc.preTest(jr)
 		}
 		if err := jr.Run(); err != nil {
-			if gerr, ok := err.(*goja.Exception); ok {
-				t.Fatalf("Unexpected error: %v", gerr.String())
+			if jsErr, ok := err.(*goja.Exception); ok {
+				t.Fatalf("Unexpected error: %v", jsErr.String())
 			} else {
 				t.Fatalf("Unexpected error: %v", err)
 			}
