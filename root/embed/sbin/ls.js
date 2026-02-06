@@ -34,9 +34,9 @@
     const sortByTime = values.time;
     const recursive = values.recursive;
 
-    let dirs = positionals.length > 0 ? positionals : [pwd];
+    let rawArgs = positionals.length > 0 ? positionals : [pwd];
 
-    var showDir = dirs.length > 1;
+    let showDir = false;
 
     // Get color for file based on mode
     let getColor = function (nfo) {
@@ -76,6 +76,75 @@
     };
 
     let print = longFormat ? printDetailed : printSimple;
+
+    let hasWildcard = function (value) {
+        return /[*?]/.test(value);
+    };
+
+    let escapeRegex = function (value) {
+        return value.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+    };
+
+    let globToRegex = function (pattern) {
+        const escaped = escapeRegex(pattern)
+            .replace(/\\\*/g, ".*")
+            .replace(/\\\?/g, ".");
+        return new RegExp("^" + escaped + "$");
+    };
+
+    let splitPath = function (value) {
+        const idx = value.lastIndexOf("/");
+        if (idx === -1) {
+            return { dir: "", base: value };
+        }
+        const dir = value.slice(0, idx) || "/";
+        const base = value.slice(idx + 1);
+        return { dir: dir, base: base };
+    };
+
+    let resolvePath = function (value) {
+        if (value.startsWith("/")) {
+            return value;
+        }
+        return pwd + "/" + value;
+    };
+
+    let joinPath = function (dir, name) {
+        if (!dir || dir === ".") {
+            return name;
+        }
+        if (dir.endsWith("/")) {
+            return dir + name;
+        }
+        return dir + "/" + name;
+    };
+
+    let expandGlob = function (pattern) {
+        if (!hasWildcard(pattern)) {
+            return [pattern];
+        }
+
+        const parts = splitPath(pattern);
+        const dirPart = parts.dir || ".";
+        const basePart = parts.base || "";
+        const dirPath = resolvePath(dirPart);
+        let entries;
+
+        try {
+            entries = fs.readDir(dirPath).map((d) => d.info());
+        } catch (e) {
+            return [];
+        }
+
+        const regex = globToRegex(basePart);
+        const matchDot = basePart.startsWith(".");
+
+        return entries
+            .map((entry) => entry.name())
+            .filter((name) => matchDot || !name.startsWith("."))
+            .filter((name) => regex.test(name))
+            .map((name) => joinPath(parts.dir, name));
+    };
 
     // Helper function to filter entries
     let filterEntries = function (entries) {
@@ -132,7 +201,58 @@
         }
     };
 
-    dirs.forEach((dir) => {
+    let expanded = [];
+    let missing = [];
+
+    rawArgs.forEach((arg) => {
+        const matches = expandGlob(arg);
+        if (matches.length === 0) {
+            missing.push(arg);
+        } else {
+            expanded = expanded.concat(matches);
+        }
+    });
+
+    showDir = expanded.length > 1;
+
+    missing.forEach((arg) => {
+        console.println("ls: cannot access '" + arg + "': No such file or directory");
+    });
+
+    let files = [];
+    let dirs = [];
+
+    expanded.forEach((path) => {
+        const fullPath = resolvePath(path);
+        try {
+            const info = fs.stat(fullPath);
+            const modeStr = info.mode().string();
+            if (modeStr.startsWith("d")) {
+                dirs.push(path);
+            } else {
+                files.push(info);
+            }
+        } catch (e) {
+            console.println("ls: cannot access '" + path + "': No such file or directory");
+        }
+    });
+
+    if (files.length > 0) {
+        files.forEach((info) => {
+            print(info);
+        });
+        if (!longFormat) {
+            console.println();
+        }
+        if (dirs.length > 0) {
+            console.println();
+        }
+    }
+
+    dirs.forEach((dir, idx) => {
         listDirectory(dir, null);
-    })
+        if (idx < dirs.length - 1) {
+            console.println();
+        }
+    });
 })()
